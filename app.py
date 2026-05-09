@@ -2,51 +2,51 @@
 # IMPORT LIBRARIES
 # =========================
 import streamlit as st
-import joblib
+import pickle
 import pandas as pd
 
 # =========================
 # LOAD FILES
 # =========================
-try:
-    model = joblib.load("knn_model.pkl")
-    scaler = joblib.load("scaler.pkl")
-    columns = joblib.load("columns.pkl")
-
-except Exception as e:
-    st.error(f"Error loading files: {e}")
-    st.stop()
+model = pickle.load(open("knn_model.pkl", "rb"))
+scaler = pickle.load(open("scaler.pkl", "rb"))
+columns = pickle.load(open("columns.pkl", "rb"))
 
 # =========================
-# HELPER FUNCTION
+# HELPER: EXTRACT OPTIONS FROM TRAINED COLUMNS
 # =========================
 def get_options(prefix):
     opts = [col.replace(prefix, "") for col in columns if col.startswith(prefix)]
-    return sorted(list(set(opts)))
+    opts = sorted(list(set(opts)))
+    return opts
 
-# =========================
-# OPTIONS
-# =========================
-job_options = ["Other"] + get_options("job_title_")
-edu_options = ["Other"] + get_options("education_level_")
-loc_options = ["Other"] + get_options("location_")
-ind_options = ["Other"] + get_options("industry_")
-company_options = ["Other"] + get_options("company_size_")
-remote_options = ["Other"] + get_options("remote_work_")
+# Extract all possible options
+job_options = get_options("job_title_")
+edu_options = get_options("education_level_")
+loc_options = get_options("location_")
+ind_options = get_options("industry_")
+company_options = get_options("company_size_")
+remote_options = get_options("remote_work_")
+
+# Add baseline category (lost due to drop_first=True)
+job_options = ["Other"] + job_options
+edu_options = ["Other"] + edu_options
+loc_options = ["Other"] + loc_options
+ind_options = ["Other"] + ind_options
+company_options = ["Other"] + company_options
+remote_options = ["Other"] + remote_options
 
 # =========================
 # TITLE
 # =========================
-st.title("💼 Salary Prediction App")
+st.title("💼 Salary Prediction App (KNN Improved)")
 
 # =========================
 # USER INPUT
 # =========================
-exp = st.number_input("Experience (years)", min_value=0, max_value=30, value=1)
-
-skills = st.number_input("Skills Count", min_value=0, max_value=50, value=1)
-
-cert = st.number_input("Certifications", min_value=0, max_value=20, value=0)
+exp = st.number_input("Experience (years)", 0, 30)
+skills = st.number_input("Skills Count", 0, 50)
+cert = st.number_input("Certifications", 0, 20)
 
 job = st.selectbox("Job Role", job_options)
 edu = st.selectbox("Education", edu_options)
@@ -56,7 +56,7 @@ company = st.selectbox("Company Size", company_options)
 remote = st.selectbox("Remote Work", remote_options)
 
 # =========================
-# CREATE INPUT DATAFRAME
+# CREATE INPUT
 # =========================
 input_dict = {
     "experience_years": exp,
@@ -76,57 +76,33 @@ input_df = pd.DataFrame([input_dict])
 # FEATURE ENGINEERING
 # =========================
 input_df['exp_squared'] = input_df['experience_years'] ** 2
-
-input_df['skill_per_exp'] = (
-    input_df['skills_count'] /
-    (input_df['experience_years'] + 1)
-)
-
-input_df['cert_per_skill'] = (
-    input_df['certifications'] /
-    (input_df['skills_count'] + 1)
-)
+input_df['skill_per_exp'] = input_df['skills_count'] / (input_df['experience_years'] + 1)
+input_df['cert_per_skill'] = input_df['certifications'] / (input_df['skills_count'] + 1)
 
 input_df['seniority'] = pd.cut(
     input_df['experience_years'],
-    bins=[-1, 2, 5, 10, 100],
+    bins=[0, 2, 5, 10, 20],
     labels=['Fresher', 'Junior', 'Mid', 'Senior']
 )
 
 # =========================
-# CONVERT TO DUMMIES
+# DUMMIES + ALIGN
 # =========================
 input_df = pd.get_dummies(input_df)
-
-# =========================
-# ALIGN COLUMNS
-# =========================
 input_df = input_df.reindex(columns=columns, fill_value=0)
 
 # =========================
-# SCALE NUMERIC FEATURES
+# SCALE
 # =========================
-num_cols = [
-    'experience_years',
-    'skills_count',
-    'certifications',
-    'exp_squared',
-    'skill_per_exp',
-    'cert_per_skill'
-]
+num_cols = ['experience_years', 'skills_count', 'certifications',
+            'exp_squared', 'skill_per_exp', 'cert_per_skill']
 
 input_df[num_cols] = scaler.transform(input_df[num_cols])
 
 # =========================
-# PREDICT
+# PREDICTION
 # =========================
 if st.button("Predict Salary"):
-
     prediction = model.predict(input_df)
-
-    st.success(
-        f"💰 Predicted Salary: ₹ {int(prediction[0]):,}"
-    )
-
+    st.success(f"💰 Predicted Salary: {int(prediction[0])}")
     st.balloons()
-    
